@@ -1,0 +1,4 @@
+Click
+python-dotenv
+appdirs
+rich
