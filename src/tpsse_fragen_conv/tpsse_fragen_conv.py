@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import date
 from datetime import datetime
 import click
 import sys
@@ -8,65 +9,94 @@ from rich import print
 import os
 import json
 # from .myloadenv import load_env
-
-
-class Loader(yaml.SafeLoader):
-    """YAML Loader with `!include` constructor."""
-
-    def __init__(self, stream: IO) -> None:
-        """Initialise Loader."""
-
-        try:
-            self._root = os.path.split(stream.name)[0]
-        except AttributeError:
-            self._root = os.path.curdir
-
-        super().__init__(stream)
-
-
-def construct_include(loader: Loader, node: yaml.Node) -> Any:
-    """Include file referenced at node."""
-
-    filename = os.path.abspath(os.path.join(loader._root, loader.construct_scalar(node)))
-    extension = os.path.splitext(filename)[1].lstrip('.')
-
-    with open(filename, 'r', encoding='utf8') as f:
-        if extension in ('yaml', 'yml'):
-            return yaml.load(f, Loader)
-        elif extension in ('json',):
-            return json.load(f)
-        else:
-            return ''.join(f.readlines())
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment
 
 
 class FragenConv:
     
-    @staticmethod
-    def _check_dir(path_to_check: str, basedir: str, typ: str) -> Path:
-        path_to_check = Path(path_to_check)
-        if not path_to_check.is_absolute():
-            path_to_check = Path(basedir) / path_to_check
-        if not path_to_check.exists():
-            print(f'{typ} {path_to_check} existiert nicht.')
-            sys.exit(1)
-        return path_to_check
+    def __init__(self, main_input, template, outfile):
+        self._main_input = Path(main_input)
+        self._today = date.today().strftime("%d.%m.%Y")
+        with open(self._main_input, 'r', encoding="utf8") as f:
+            self._data = yaml.load(f, Loader=yaml.CLoader)
+        self._path = self._main_input.parent
+        self._cwd = Path.cwd()
+
+        self._outfile = self._cwd / "output" / outfile
+        self._template = self._cwd / "template" / template
+        self._load_fragen()
+
+    @property
+    def data(self):
+        return self._data
 
 
-    def __init__(self):
-        pass
+    def _load_fragen(self):
+        for le in self._data['lerneinheiten']:
+            fragen_datei = self._path / le['datei']
+            with open(fragen_datei, 'r', encoding="utf8") as f:
+                temp = yaml.load(f, Loader=yaml.CLoader)
+                le['fragenpool'] = temp
+
+
+    def _copy_ws(self, wb, le):
+        w = wb["Template SC_MC"]
+        t = wb.copy_worksheet(w)
+        t.title = f'{le["id"]:02d} SC_MC'
+
+    def _write_ws(self, wb, le):
+        if not le["fragenpool"]["fragen"]:
+            return
+        a = Alignment(wrap_text = True, shrinkToFit=True)
+        w = wb[f'{le["id"]:02d} SC_MC']
+        r = start_row = 2
+        c = start_col = 2
+        for f in le["fragenpool"]["fragen"]:
+            w.cell(row=r, column=c).value = self._today
+            w.cell(row=r, column=c+1).value = ("MC")
+            w.cell(row=r, column=c+3).value = ("1")
+            w.cell(row=r, column=c+4).value = f["text"]
+            w.cell(row=r, column=c+4).alignment = a
+            oc = c+5
+            for o in f["optionen"]:
+                w.cell(row=r, column=oc).value = o["text"]
+                w.cell(row=r, column=oc).alignment = a
+                if 'y' == o["richtig"]:
+                    w.cell(row=r, column=oc+1).value = "x"
+                oc += 2
+            r += 1
+
+    def _write_blueprint(self, wb):
+        bp = wb["Blueprint"]
+        r = start_row = 2
+        c = start_col = 2
+        for le in self._data["lerneinheiten"]:
+            bp.cell(row=r, column=c).value = le["fragenpool"]["thema"]
+            bp.cell(row=r, column=c+1).value = "MC"
+            bp.cell(row=r, column=c+4).value = bp.cell(row=r, column=c+2).value = le["fragenpool"]["pruefungsfragen"]
+            r += 1
+            self._copy_ws(wb, le)
+            self._write_ws(wb, le)
+        wb["Template SC_MC"].sheet_state = 'hidden'
+
+
+    def write_xls(self):
+        wb = load_workbook(self._template)
+        self._write_blueprint(wb)
+        wb.save(self._outfile)
 
 
 @click.command()
-def run():
-    """Modulare Verwaltung von DNS-Zonen"""
-    converter = FragenConv()
-    with open('d:/TPSSE/github/Pruefungsfragen_TPSSE/Fragenpool/fragen_tpsse.yml', 'r') as f:
-        data = yaml.load(f, Loader)
-    print(data)
+@click.option('--fmain', envvar='FRAGENCONV_MAIN', help="Main-Datei für Prüfungsfragen (FRAGENCONV_MAIN)")
+@click.option('--template', envvar='FRAGENCONV_TEMPLATE', help="Main-Datei für Prüfungsfragen (FRAGENCONV_TEMPLATE)")
+@click.option('--out', envvar='FRAGENCONV_OUT', help="Main-Datei für Prüfungsfragen (FRAGENCONV_OUT)")
+def run(fmain, template, out):
+    converter = FragenConv(fmain, template, out)
+    converter.write_xls()
 
 def main():
     # load_env()
-    yaml.add_constructor('!include', construct_include, Loader)
     run()
 
 
