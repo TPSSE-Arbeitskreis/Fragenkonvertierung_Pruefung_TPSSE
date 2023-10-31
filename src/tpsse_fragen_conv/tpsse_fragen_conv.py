@@ -59,6 +59,7 @@ class FragenConv:
             w.cell(row=r, column=c+4).value = f["text"]
             w.cell(row=r, column=c+4).alignment = a
             oc = c+5
+            print(f'{f["text"]}')
             for o in f["optionen"]:
                 w.cell(row=r, column=oc).value = o["text"]
                 w.cell(row=r, column=oc).alignment = a
