@@ -23,8 +23,8 @@ class FragenConv:
         self._path = self._main_input.parent
         self._cwd = Path.cwd()
 
-        self._outfile = self._cwd / "output" / outfile
-        self._template = self._cwd / "template" / template
+        self._outfile = Path(outfile)
+        self._template = Path(template)
         self._load_fragen()
 
     @property
