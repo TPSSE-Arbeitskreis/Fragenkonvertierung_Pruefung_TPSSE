@@ -14,7 +14,7 @@ from openpyxl.styles import Alignment
 
 
 class FragenConv:
-    
+
     def __init__(self, main_input, template, outfile):
         self._main_input = Path(main_input)
         self._today = date.today().strftime("%d.%m.%Y")
@@ -31,7 +31,6 @@ class FragenConv:
     def data(self):
         return self._data
 
-
     def _load_fragen(self):
         for le in self._data['lerneinheiten']:
             fragen_datei = self._path / le['datei']
@@ -39,52 +38,35 @@ class FragenConv:
                 temp = yaml.load(f, Loader=yaml.CLoader)
                 le['fragenpool'] = temp
 
-
-    def _copy_ws(self, wb, le):
-        w = wb["Template SC_MC"]
-        t = wb.copy_worksheet(w)
-        t.title = f'{le["id"]:02d} SC_MC'
-
-    def _write_ws(self, wb, le):
-        if not le["fragenpool"]["fragen"]:
-            return
-        a = Alignment(wrap_text = True, shrinkToFit=True)
-        w = wb[f'{le["id"]:02d} SC_MC']
-        r = start_row = 2
-        c = start_col = 2
-        for f in le["fragenpool"]["fragen"]:
-            w.cell(row=r, column=c).value = self._today
-            w.cell(row=r, column=c+1).value = ("MC")
-            w.cell(row=r, column=c+3).value = ("1")
-            w.cell(row=r, column=c+4).value = f["text"]
-            w.cell(row=r, column=c+4).alignment = a
-            oc = c+5
-            print(f'{f["text"]}')
-            for o in f["optionen"]:
-                w.cell(row=r, column=oc).value = o["text"]
-                w.cell(row=r, column=oc).alignment = a
-                if 'y' == o["richtig"]:
-                    w.cell(row=r, column=oc+1).value = "x"
-                oc += 2
-            r += 1
-
-    def _write_blueprint(self, wb):
-        bp = wb["Blueprint"]
-        r = start_row = 2
+    def _write_dekra(self, wb):
+        bp = wb["Fragebogen Vorlage"]
+        r = start_row = 3
         c = start_col = 2
         for le in self._data["lerneinheiten"]:
-            bp.cell(row=r, column=c).value = le["fragenpool"]["thema"]
-            bp.cell(row=r, column=c+1).value = "MC"
-            bp.cell(row=r, column=c+4).value = bp.cell(row=r, column=c+2).value = le["fragenpool"]["pruefungsfragen"]
-            r += 1
-            self._copy_ws(wb, le)
-            self._write_ws(wb, le)
-        wb["Template SC_MC"].sheet_state = 'hidden'
-
+            fragenpool = le['fragenpool']
+            if fragenpool['fragen'] is None:
+                continue
+            for frage in fragenpool['fragen']:
+                if not frage['freigegeben'] == 'y':
+                    continue
+                # Ordnerhierarchie in EvaExam
+                bp.cell(row=r, column=c).value = "TPSSE"
+                bp.cell(row=r, column=c + 1).value = "T.P.S.S.E."
+                bp.cell(row=r, column=c + 2).value = fragenpool['thema']
+                # Fragenparameter
+                bp.cell(row=r, column=c + 3).value = frage['id']
+                bp.cell(row=r, column=c + 4).value = "Multiple-Choice (Korrekte Kombination)"  # F-Form
+                #bp.cell(row=r, column=c + 5).value =  # Schwierigkeitsgrad
+                bp.cell(row=r, column=c + 6).value = frage['text']  # Frage
+                # Antwortmöglichkeiten
+                for o_index, optionen in enumerate(frage['optionen']):
+                    bp.cell(row=r, column=c + 7 + o_index).value = optionen['text']
+                    bp.cell(row=r, column=c + 13 + o_index).value = int(optionen['richtig'] == 'y')
+                r = r + 1
 
     def write_xls(self):
         wb = load_workbook(self._template)
-        self._write_blueprint(wb)
+        self._write_dekra(wb)
         wb.save(self._outfile)
 
 
@@ -96,6 +78,7 @@ def run(fmain, template, out):
     converter = FragenConv(fmain, template, out)
     converter.write_xls()
 
+
 def main():
     # load_env()
     run()
@@ -103,4 +86,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

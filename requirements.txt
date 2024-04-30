@@ -2,3 +2,6 @@ Click
 python-dotenv
 appdirs
 rich
+PyYAML
+openpyxl
+ruamel.yaml
